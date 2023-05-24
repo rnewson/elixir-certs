@@ -15,7 +15,7 @@ defmodule Certs do
        ) do
     ca_key = X509.PrivateKey.new_ec(:secp256r1)
 
-    ca_crt = X509.Certificate.self_signed(ca_key, subject, template: template(template, subject))
+    ca_crt = X509.Certificate.self_signed(ca_key, subject, template: template(template, subject, "", ""))
 
     File.write!(out_key, X509.PrivateKey.to_pem(ca_key), [:exclusive])
     File.chmod!(out_key, 0o400)
@@ -29,6 +29,8 @@ defmodule Certs do
           %Optimus.ParseResult{
             options: %{
               subject: subject,
+              host: host,
+              node: node,
               issuer_cert: issuer_cert,
               issuer_key: issuer_key,
               out_cert: out_cert,
@@ -45,7 +47,7 @@ defmodule Certs do
 
     crt =
       X509.Certificate.new(pub, subject, issuer_cert, issuer_key,
-        template: template(template, subject)
+        template: template(template, subject, host, node)
       )
 
     File.write!(out_key, X509.PrivateKey.to_pem(key), [:exclusive])
@@ -59,9 +61,9 @@ defmodule Certs do
     Certs.Options.new!() |> Optimus.help() |> IO.puts()
   end
 
-  defp template("root-ca", _subject), do: :root_ca
+  defp template("root-ca", _subject, _host, _node), do: :root_ca
 
-  defp template("server", subject) do
+  defp template("server", subject, _host, _node) do
     [commonName] =
       X509.RDNSequence.new(subject)
       |> X509.RDNSequence.get_attr(:commonName)
@@ -79,6 +81,25 @@ defmodule Certs do
         subject_key_identifier: true,
         authority_key_identifier: true,
         subject_alt_name: subject_alt_name([commonName])
+      ]
+    }
+  end
+
+  defp template("node", _subject, host, node) do
+    import X509.Certificate.Extension
+
+    %X509.Certificate.Template{
+      # 1 year, plus a 30 days grace period
+      validity: 365 + 30,
+      hash: :sha256,
+      extensions: [
+        basic_constraints: basic_constraints(false),
+        key_usage: key_usage([:digitalSignature, :keyEncipherment]),
+        ext_key_usage: ext_key_usage([:serverAuth, :clientAuth]),
+        subject_key_identifier: true,
+        authority_key_identifier: true,
+        subject_alt_name: subject_alt_name([host]),
+        subject_alt_name: subject_alt_name([{:directoryName, X509.RDNSequence.new("CN=" <> node, :otp)}])
       ]
     }
   end
@@ -130,6 +151,18 @@ defmodule Certs.Options do
               long: "--subject",
               value_name: "SUBJECT",
               required: true,
+              parser: :string
+            ],
+            host: [
+              long: "--host",
+              value_name: "HOST",
+              required: false,
+              parser: :string
+            ],
+            node: [
+              long: "--node",
+              value_name: "NODE",
+              required: false,
               parser: :string
             ],
             issuer_cert: [

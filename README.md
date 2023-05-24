@@ -15,6 +15,14 @@ Certificate Authority, in Elixir, using 'x509' library.
     --out-cert server.crt --out-key server.key \
     --template server \
     --subject '/CN=server'
+
+./certs create-cert \
+    --issuer-cert ca.crt --issuer-key ca.key \
+    --out-cert node.crt --out-key node.key \
+    --template node \
+    --subject '/CN=US' \
+    --host example.com \
+    --node couchdb
 ```
 
 ## Requirements
